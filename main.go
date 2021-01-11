@@ -222,7 +222,7 @@ func main() {
 			}
 			rotation := rotationA.compose(rotationB)
 			for _, point := range donut {
-				newPoint := point.rot(rotation)
+				newPoint := point.rotate(rotation)
 				newPoint.addToScreen(screen, lightSource)
 			}
 			screen.render()
