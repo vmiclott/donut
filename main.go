@@ -40,12 +40,26 @@ func newScreen(width, height int, distanceToEye, distanceToObject float64) *scre
 // render prints the screen on the terminal
 func (s screen) render() {
 	fmt.Print("\x1b[H\n")
+	fmt.Print("/")
+	for i := 0; i < int(s.width); i++ {
+		fmt.Print("-")
+	}
+	fmt.Print("\\")
+	fmt.Println()
 	for j := 0; j < int(s.height); j++ {
+		fmt.Print("|")
 		for i := 0; i < int(s.width); i++ {
 			fmt.Print(s.screen[i][j])
 		}
+		fmt.Print("|")
 		fmt.Println()
 	}
+	fmt.Print("\\")
+	for i := 0; i < int(s.width); i++ {
+		fmt.Print("-")
+	}
+	fmt.Print("/")
+	fmt.Println()
 }
 
 // clear clears the screens points and the zBuffer
@@ -119,6 +133,20 @@ func (p point3d) rotate(rotation rotation3d) point3d {
 	}
 }
 
+// rotate rotates a 3-dimensional point and its normal vector using a given rotation
+func (p point3d) translate(translation vector3d) point3d {
+	return point3d{
+		x: p.x + translation.x,
+		y: p.y + translation.y,
+		z: p.z + translation.z,
+		normal: vector3d{
+			x: p.normal.x + translation.x,
+			y: p.normal.y + translation.y,
+			z: p.normal.z + translation.z,
+		},
+	}
+}
+
 // brightness calculates the brightness of a 3-dimensional point for a given light source
 func (p point3d) brightness(lightSource vector3d) (string, error) {
 	var brightnessSymbols [13]string = [13]string{".", ",", "-", "~", ":", ";", "=", "!", "*", "#", "$", "@", "@"}
@@ -127,8 +155,8 @@ func (p point3d) brightness(lightSource vector3d) (string, error) {
 	if brightness < 0 {
 		return "", fmt.Errorf("negative brightness")
 	}
-	brightnessIndex := int(12 * brightness)
-	return brightnessSymbols[brightnessIndex], nil
+	brightnessIndex := 12 * brightness
+	return brightnessSymbols[int(math.Min(brightnessIndex, 12))], nil
 }
 
 // addToScreen adds a point to a given screen for a given light source
@@ -137,6 +165,10 @@ func (p point3d) addToScreen(screen *screen, lightSource vector3d) {
 	screenObjectDist := screen.distanceToObject
 	xProjection := screen.width/2 + int(eyeScreenDist*p.x/(p.z+screenObjectDist))
 	yProjection := screen.height/2 - int(eyeScreenDist*p.y/(p.z+screenObjectDist))
+	if xProjection >= screen.width || yProjection >= screen.height || xProjection < 0 || yProjection < 0 {
+		// skip points out of screen
+		return
+	}
 	if 1/(p.z+screenObjectDist) <= screen.zBuffer[xProjection][yProjection] {
 		// skip points behind other points
 		return
@@ -196,7 +228,7 @@ func main() {
 		bSpacing float64 = 0.03
 	)
 
-	screen := newScreen(48, 48, 60, 5)
+	screen := newScreen(100, 40, 60, 5)
 	donut := createDonut(0.5, 1.0, 0.07, 0.02)
 	lightSource := vector3d{
 		x: 0,
@@ -208,25 +240,136 @@ func main() {
 	}
 	screen.render()
 	screen.clear()
-	for a := 0.0; a < 2*math.Pi; a += aSpacing {
-		rotationA := rotation3d{
-			{1, 0, 0},
-			{0, math.Cos(a), math.Sin(a)},
-			{0, -math.Sin(a), math.Cos(a)},
-		}
-		for b := 0.0; b < 2*math.Pi; b += bSpacing {
-			rotationB := rotation3d{
-				{math.Cos(b), math.Sin(b), 0},
-				{-math.Sin(b), math.Cos(b), 0},
-				{0, 0, 1},
-			}
-			rotation := rotationA.compose(rotationB)
-			for _, point := range donut {
-				newPoint := point.rotate(rotation)
-				newPoint.addToScreen(screen, lightSource)
-			}
-			screen.render()
-			screen.clear()
-		}
+	// for a := 0.0; a < 2*math.Pi; a += aSpacing {
+	rotationA := rotation3d{
+		{1, 0, 0},
+		{0, math.Cos(aSpacing), math.Sin(aSpacing)},
+		{0, -math.Sin(aSpacing), math.Cos(aSpacing)},
 	}
+	rotationANeg := rotation3d{
+		{1, 0, 0},
+		{0, math.Cos(-1 * aSpacing), math.Sin(-1 * aSpacing)},
+		{0, -math.Sin(-1 * aSpacing), math.Cos(-1 * aSpacing)},
+	}
+	// for b := 0.0; b < 2*math.Pi; b += bSpacing {
+	rotationB := rotation3d{
+		{math.Cos(bSpacing), math.Sin(bSpacing), 0},
+		{-math.Sin(bSpacing), math.Cos(bSpacing), 0},
+		{0, 0, 1},
+	}
+	rotationBNeg := rotation3d{
+		{math.Cos(-1 * bSpacing), math.Sin(-1 * bSpacing), 0},
+		{-math.Sin(-1 * bSpacing), math.Cos(-1 * bSpacing), 0},
+		{0, 0, 1},
+	}
+	rotation := rotationA.compose(rotationB)
+	rotationNeg := rotationANeg.compose(rotationBNeg)
+
+	xRight := vector3d{0.05, 0, 0}
+	xLeft := vector3d{-0.05, 0, 0}
+	yRight := vector3d{0, 0.05, 0}
+	yLeft := vector3d{0, -0.05, 0}
+	zRight := vector3d{0, 0, 0.05}
+	zLeft := vector3d{0, 0, -0.05}
+
+	for j := 0; j < 20; j++ {
+		for i, point := range donut {
+			donut[i] = point.rotate(rotation)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 50; j++ {
+		for i, point := range donut {
+			donut[i] = point.translate(xRight)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 20; j++ {
+		for i, point := range donut {
+			donut[i] = point.rotate(rotation)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 50; j++ {
+		for i, point := range donut {
+			donut[i] = point.translate(xLeft)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 20; j++ {
+		for i, point := range donut {
+			donut[i] = point.rotate(rotationNeg)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 50; j++ {
+		for i, point := range donut {
+			donut[i] = point.translate(yRight)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 50; j++ {
+		for i, point := range donut {
+			donut[i] = point.translate(yLeft)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 20; j++ {
+		for i, point := range donut {
+			donut[i] = point.rotate(rotationNeg)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 50; j++ {
+		for i, point := range donut {
+			donut[i] = point.translate(zRight)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 20; j++ {
+		for i, point := range donut {
+			donut[i] = point.rotate(rotationNeg)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+
+	for j := 0; j < 50; j++ {
+		for i, point := range donut {
+			donut[i] = point.translate(zLeft)
+			donut[i].addToScreen(screen, lightSource)
+		}
+		screen.render()
+		screen.clear()
+	}
+	// }
+	// }
 }
